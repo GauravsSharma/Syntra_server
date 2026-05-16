@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import dotenv from "dotenv";
 import { summarizeMarkdownPrompt } from "./prompts";
-import { ConversationStatus, Message } from "../../generated/prisma/client";
+import { ConversationStatus, Message } from "../generated/prisma/client/client";
 
 dotenv.config();
 

@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import https from "https";
-import { ConversationStatus } from "../../generated/prisma/client";
+import { ConversationStatus } from "../generated/prisma/client/client";
 
 interface Message{
     role: "user"|"assistant",

@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
     "module": "ESNext",
-     "types": ["node"],
+    "types": ["node"],
     "moduleResolution": "bundler",
     "target": "ES2023",
     "strict": true,
     "esModuleInterop": true,
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "6.0",
+    "outDir": "./dist",      // ← ADD THIS
+    "rootDir": "./src"       // ← ADD THIS
   },
-    "include": ["src"],
+  "include": ["src"],
   "exclude": ["node_modules", "dist"]
 }

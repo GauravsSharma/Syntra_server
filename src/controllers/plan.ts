@@ -4,7 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import { PLANS } from "../data/pricing.js";
 import { rozarPayInstance } from "../config/razorpay.js";
 import crypto from "crypto";
-import { PlanType,SubscriptionStatus } from "../../generated/prisma/client.js";
+import { PlanType,SubscriptionStatus } from "../generated/prisma/client/client.js";
 
 
 export const verifyPlanPayment = async (
