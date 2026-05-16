@@ -1,0 +1,192 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+enum PlanType {
+  FREE
+  NINJA
+  NINJA_PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  INACTIVE
+  CANCELED
+}
+
+model User {
+  id        String   @id @default(uuid())
+
+  name      String?
+  email     String   @unique
+  image     String?
+
+  created_at DateTime @default(now())
+
+  organizations Organization[]
+}
+
+model Organization {
+  id              String   @id @default(uuid())
+
+  owner_id        String
+  owner           User @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  owner_email     String?
+  business_name   String?
+  website_url     String?
+  external_links  String?
+  image           String?
+  plan            PlanType @default(FREE)
+
+  /// relation
+  subscription      Subscription?
+
+  /// usage tracking
+  usage             OrganizationUsage?
+
+  isPersonal      Boolean @default(false)
+  created_at      DateTime @default(now())
+}
+model Subscription {
+  id                    String   @id @default(uuid())
+
+  organization_id       String   @unique
+  organization          Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  status                SubscriptionStatus @default(INACTIVE)
+  plan                  PlanType @default(FREE)
+  /// razorpay
+  razorpay_order_id     String?
+  razorpay_payment_id   String?
+
+  current_period_start  DateTime?
+  current_period_end    DateTime?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model OrganizationUsage {
+  id                         String   @id @default(uuid())
+
+  organization_id            String   @unique
+  organization               Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  /// lifetime usage for free plan
+  lifetime_ai_messages_used  Int @default(0)
+
+  /// monthly usage for paid plans
+  monthly_ai_messages_used   Int @default(0)
+
+  /// resets every month
+  last_reset_at              DateTime?
+
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+}
+
+model Metadata {
+  id             String   @id @default(uuid())
+  user_email     String   @unique
+  business_name  String
+  website_url    String
+  external_links String?
+  created_at     DateTime @default(now())
+}
+
+model KnowledgeSource {
+  id           String   @id @default(uuid()) 
+  user_email   String   
+  type         String  
+  name         String 
+  status       String   @default("active") 
+  source_url   String?
+  content      String?
+  meta_data    Json?
+  org_id       String
+  sections      Section[]
+  last_updated DateTime @default(now())  
+  created_at   DateTime @default(now())
+}
+
+model Section {
+  id            String   @id @default(uuid())
+  userEmail     String   @map("user_email")
+  name          String
+  description   String
+  org_id       String
+  sourceIds     KnowledgeSource[]
+  tone          String
+  allowedTopics String[] @default([]) @map("allowed_topics")
+  blockedTopics String[] @default([]) @map("blocked_topics")
+  status        String   @default("active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("sections")
+}
+
+model ChatBotMetadata {
+  id             String   @id @default(uuid())
+  user_email     String    @unique
+  color          String?   @default("#4f39f6")
+  welcome_message String?  @default("Hi there, How can I help you today?")
+  created_at     DateTime @default(now())
+  organization_id String
+  @@map("chatBotMetadata")
+}
+
+model TeamMember {
+  id             String   @id @default(uuid())
+  user_email     String
+  name           String
+  organization_id String
+  role           String   @default("member")
+  status         String   @default("pending")
+  created_at     DateTime @default(now())
+
+  @@unique([user_email, organization_id])
+}
+
+enum ConversationStatus {
+  OPEN
+  ESCALATED
+  ACTIVE
+  RESOLVED
+  EXPIRED   // ← naya: 10 min mein agent nahi aaya
+}
+
+model Conversation {
+  id                  String             @id @default(uuid())
+  user_email          String?
+  visitor_ip          String?
+  name                String?
+  chatbot_id          String
+  created_at          DateTime           @default(now())
+  status              ConversationStatus @default(OPEN)
+  escalated_at        DateTime?
+  resolved_at         DateTime?
+  resolved_by         String?
+  org_id              String
+  client_email        String?
+  escalation_count    Int                @default(0)  // ← naya
+  messages            Message[]
+}
+
+model Message {
+  id              String       @id @default(uuid())
+  conversation_id String
+  role            String
+  content         String
+  created_at      DateTime     @default(now())
+
+  conversation    Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+}
