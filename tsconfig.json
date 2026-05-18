@@ -1,14 +1,14 @@
 {
   "compilerOptions": {
-    "module": "ESNext",
-    "types": ["node"],
-    "moduleResolution": "bundler",
+    "module": "CommonJS",
+    "moduleResolution": "node10",
     "target": "ES2023",
     "strict": true,
     "esModuleInterop": true,
     "ignoreDeprecations": "6.0",
-    "outDir": "./dist",      // ← ADD THIS
-    "rootDir": "./src"       // ← ADD THIS
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node"]
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

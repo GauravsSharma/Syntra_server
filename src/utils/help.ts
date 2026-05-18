@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { PlanType } from "../generated/prisma/client/client";
+import { PlanType } from "../generated/prisma/client/client.js";
 import { PLANS } from "../data/pricing";
 import { prisma } from "../lib/prisma";
 type AIStatus = "ACTIVE" | "ESCALATED" | "EXPIRED"|"OPEN";
