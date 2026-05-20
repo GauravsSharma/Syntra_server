@@ -29,7 +29,7 @@ const port = process.env.PORT || 5000
 // Socket.io setup
 export const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL,
+    origin:process.env.CLIENT_URL!,
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -108,7 +108,7 @@ io.on('connection', (socket) => {
 });
 
 app.use(cors({
-  origin: process.env.CLIENT_URL,
+  origin: process.env.CLIENT_URL!,
   credentials: true,
 }));
 
@@ -133,7 +133,6 @@ app.get('/test', (req: Request, res: Response) => {
   res.send('Hello, TypeScript Express! oiooioioiioioi');
 });
 
-// ⚠️ app.listen → httpServer.listen
-httpServer.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+httpServer.listen(Number(port), '0.0.0.0', () => {
+    console.log(`Server running at http://localhost:${port}`);
 });

@@ -1,5 +1,5 @@
 import express from 'express';
-import { addMetadata, generateRedirectUrl, getMetadata, getUserInfo, validateScalekitCallback } from '../controllers/user.js';
+import { addMetadata, getMetadata, getUserInfo, login } from '../controllers/user.js';
 import { authMiddleware } from '../middleware/auth.js';
 
 
@@ -7,8 +7,8 @@ import { authMiddleware } from '../middleware/auth.js';
 const router = express.Router();
 
 // Example route for getting user information
-router.get("/login",generateRedirectUrl)
-router.get("/callback",validateScalekitCallback)
+// router.get("/login",generateRedirectUrl)
+router.post("/login",login)
 
 router.get("/",authMiddleware,getUserInfo)
 
