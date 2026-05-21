@@ -4,27 +4,72 @@ import scalekit from '../config/scalkit.js';
 import { prisma } from '../lib/prisma.js';
 import { subscribe } from 'diagnostics_channel';
 
-export const login = async (req: Request, res: Response) => {
+export const generateRedirectUrl = async (req: Request, res: Response) => {
     try {
-        const { email, organization_id, role, name } = req.body;
-        console.log(email, organization_id, role, name );
-        
+        const state = crypto.randomBytes(16).toString("hex");
+        res.cookie("sk_state", state, {
+           httpOnly: true,
+            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            path: "/",
+        })
+        const redirectUrl = process.env.SCALEKIT_REDIRECT_URI!;
+        const options = {
+            scops: ["email", "profile", "openid", "offline_access"],
+            state
+        }
+        const url = await scalekit.getAuthorizationUrl(redirectUrl, options);
+        res.redirect(url);
+    } catch (error) {
+        res.status(500).json({ message: "Authentication failed", error })
+    }
+}
+export const validateScalekitCallback = async (req: Request, res: Response) => {
+    try {
+        const incomingState = req.query.state;
+        const cookieState = req.cookies.sk_state;
+        if (incomingState !== cookieState) {
+            return res.status(401).send("Invalid state");
+        }
+        const code = req.query.code as string;
+        const error = req.query.error as string;
+        const errorDescription = req.query.error_description as string;
+
+        if (error) {
+            return res.status(401).json({ error, errorDescription });
+        }
+        if (!code) {
+            return res.status(400).json({ error: "No code provided" });
+        }
+
+        const redirectUri = process.env.SCALEKIT_REDIRECT_URI!;
+        const authResult = await scalekit.authenticateWithCode(code, redirectUri);
+        const { user, idToken } = authResult
+        const claims = await scalekit.validateToken(idToken);
+        let organizationId =
+            (claims as any).organization_id ||
+            (claims as any).org_id ||
+            (claims as any).oid ||
+            null;
+
         const userr = await prisma.user.findUnique({
-            where: { email: email }
+            where: { email: user.email }
         })
 
         if (!userr) {
             const new_user = await prisma.user.create({
                 data: {
-                    email: email,
-                    name: name
+                    email: user.email,
+                    name: user.name || user.givenName,
                 }
             })
-
-            const isAdmin = role === "admin";
-            if (!isAdmin) {
-                const org = await scalekit.organization.createOrganization(email);
-                organization_id;
+            // yha check kaaro isAdmin
+            const roles = (claims as any).roles || [];
+            const isAdmin = roles.includes("admin");
+            if(!isAdmin){
+                const org = await scalekit.organization.createOrganization(user.email);
+                organizationId = org.organization?.id;
             }
             const currentPeriodEnd = new Date();
             currentPeriodEnd.setFullYear(
@@ -32,10 +77,10 @@ export const login = async (req: Request, res: Response) => {
             );
             await prisma.organization.create({
                 data: {
-                    id: organization_id,
+                    id: organizationId,
                     owner_id: new_user.id,
                     isPersonal: true,
-                    owner_email: email,
+                    owner_email: user.email,
                     usage: {
                         create: {}
                     },
@@ -48,19 +93,30 @@ export const login = async (req: Request, res: Response) => {
                     }
                 }
             });
+
         }
-        return res.status(200).json({
-            success: true,
-            message: "Login success"
-        })
+        const userSession = {
+            email: user.email,
+            organization_id: organizationId,
+            role: "admin"
+        }
 
+        res.cookie("user_session", JSON.stringify(userSession), {
+            httpOnly: true,
+            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            path: "/",
+        });
 
+        res.redirect(process.env.CLIENT_URL!);
     } catch (error) {
         console.log(error);
 
         res.status(500).json({ message: "Authentication failed", error })
     }
 }
+
 export const getUserInfo = async (req: Request, res: Response) => {
     try {
         const user = (req as any).user;
