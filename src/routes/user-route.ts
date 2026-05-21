@@ -8,7 +8,7 @@ const router = express.Router();
 
 // Example route for getting user information
 router.get("/login",generateRedirectUrl)
-router.post("/callback",validateScalekitCallback)
+router.get("/callback",validateScalekitCallback)
 
 router.get("/",authMiddleware,getUserInfo)
 
