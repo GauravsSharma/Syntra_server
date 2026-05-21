@@ -159,11 +159,10 @@ export const addMetadata = async (req: Request, res: Response) => {
 
         })
         res.cookie("user_metadata", JSON.stringify(metaData), {
-
-            httpOnly: true,
-            sameSite: "lax",
+  httpOnly: true,
+            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
             secure: process.env.NODE_ENV === "production",
-            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
             path: "/",
         });
 
@@ -196,9 +195,9 @@ export const getMetadata = async (req: Request, res: Response) => {
         const data = { ...metadata, role }
         res.cookie("user_metadata", JSON.stringify(data), {
             httpOnly: true,
-            sameSite: "lax",
+            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
             secure: process.env.NODE_ENV === "production",
-            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
             path: "/",
         });
         return res.status(200).json({
