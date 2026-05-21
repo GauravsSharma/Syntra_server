@@ -1,13 +1,13 @@
-import { Request, Response } from "express";
+import { Request, Response,CookieOptions } from "express";
 import { prisma } from "../lib/prisma";
 import scalekit from "../config/scalkit";
 
-const COOKIE_OPTIONS = {
+const COOKIE_OPTIONS:CookieOptions = {
     httpOnly: true,
-    sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    path: "/",
+            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            path: "/",
 };
 
 export const getOrganization = async (req: Request, res: Response) => {
