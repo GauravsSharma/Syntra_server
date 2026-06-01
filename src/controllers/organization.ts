@@ -94,8 +94,8 @@ export const addMemberToOrganization = async (req: Request, res: Response) => {
 }
 export const getTeamMembers = async (req: Request, res: Response) => {
     try {
-        const og_id = (req as any).user.organization_id;
-
+        const og_id = (req as any).user.organizationId;
+console.log("orrrrrrrrggggggg------->",og_id);
         const team_members = await prisma.teamMember.findMany({
             where: { organization_id: og_id }
         })

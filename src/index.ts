@@ -25,13 +25,13 @@ dotenv.config();
 const app = express();
 const httpServer = createServer(app); // ← wrap karo
 const port = process.env.PORT || 5000
+const openCors = cors({ origin: '*' });
 
 // Socket.io setup
 export const io = new Server(httpServer, {
   cors: {
-    origin:process.env.CLIENT_URL!,
-    methods: ['GET', 'POST'],
-    credentials: true
+    origin:"*",
+    credentials: false
   }
 });
 
@@ -106,16 +106,17 @@ io.on('connection', (socket) => {
     console.log('Socket disconnected:', socket.id);
   });
 });
+app.use(express.json());
+app.use("/api/widget", openCors ,widget)
+
 
 app.use(cors({
-  origin: process.env.CLIENT_URL!,
+  origin: [process.env.CLIENT_URL!,"http://localhost:3000"],
   credentials: true,
 }));
 
 app.use('/webhooks/scalekit', express.raw({ type: 'application/json' }));
 app.use(cookieParser());
-app.use(express.json());
-
 app.use("/api/conversation", conversationRouter)
 app.use("/api/auth", userRoute)
 app.use("/api/knowledge", knowledgeRouter)
@@ -123,7 +124,6 @@ app.use("/api/section", sectionRouter)
 app.use("/api/chatBot", chatBotRouter)
 app.use("/api/organization", organizationRouter)
 app.use("/webhooks", webhooks)
-app.use("/api/widget", widget)
 app.use("/api/plans", plans)
 
 app.get('/', (req: Request, res: Response) => {
@@ -132,7 +132,16 @@ app.get('/', (req: Request, res: Response) => {
 app.get('/test', (req: Request, res: Response) => {
   res.send('Hello, TypeScript Express! oiooioioiioioi');
 });
-
+app.get(
+  "/public",
+  cors(), // ya origin: "*"
+  (req, res) => {
+    res.json({
+      success: true,
+      message: "Anyone can access this route",
+    });
+  }
+);
 httpServer.listen(Number(port), '0.0.0.0', () => {
     console.log(`Server running at http://localhost:${port}`);
 });
