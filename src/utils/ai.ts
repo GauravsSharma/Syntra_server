@@ -131,7 +131,7 @@ export const generateReply = async (
   escalation_count:number
 ) => {
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.5-flash-lite",
 systemInstruction: `You are Sarah, a customer support specialist.
 
 Reply ONLY in valid JSON:
