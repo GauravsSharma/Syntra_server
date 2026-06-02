@@ -1,121 +1,190 @@
 import type { Request, Response } from 'express';
-import crypto from "crypto";
-import scalekit from '../config/scalkit.js';
+import axios from "axios";
+import jwt from "jsonwebtoken";
 import { prisma } from '../lib/prisma.js';
-import { subscribe } from 'diagnostics_channel';
+import querystring from "querystring";
 
 export const generateRedirectUrl = async (req: Request, res: Response) => {
     try {
-        const state = crypto.randomBytes(16).toString("hex");
-        res.cookie("sk_state", state, {
-           httpOnly: true,
-            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
-            secure: process.env.NODE_ENV === "production",
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-            path: "/",
-        })
-        const redirectUrl = process.env.SCALEKIT_REDIRECT_URI!;
-        const options = {
-            scops: ["email", "profile", "openid", "offline_access"],
-            state
-        }
-        const url = await scalekit.getAuthorizationUrl(redirectUrl, options);
-        res.redirect(url);
-    } catch (error) {
-        res.status(500).json({ message: "Authentication failed", error })
-    }
-}
-export const validateScalekitCallback = async (req: Request, res: Response) => {
-    try {
-        const incomingState = req.query.state;
-        const cookieState = req.cookies.sk_state;
-        if (incomingState !== cookieState) {
-            return res.status(401).send("Invalid state");
-        }
-        const code = req.query.code as string;
-        const error = req.query.error as string;
-        const errorDescription = req.query.error_description as string;
-
-        if (error) {
-            return res.status(401).json({ error, errorDescription });
-        }
-        if (!code) {
-            return res.status(400).json({ error: "No code provided" });
-        }
-
-        const redirectUri = process.env.SCALEKIT_REDIRECT_URI!;
-        const authResult = await scalekit.authenticateWithCode(code, redirectUri);
-        const { user, idToken } = authResult
-        const claims = await scalekit.validateToken(idToken);
-        let organizationId =
-            (claims as any).organization_id ||
-            (claims as any).org_id ||
-            (claims as any).oid ||
-            null;
-
-        const userr = await prisma.user.findUnique({
-            where: { email: user.email }
-        })
-
-        if (!userr) {
-            const new_user = await prisma.user.create({
-                data: {
-                    email: user.email,
-                    name: user.name || user.givenName,
-                }
-            })
-            // yha check kaaro isAdmin
-            const roles = (claims as any).roles || [];
-            const isAdmin = roles.includes("admin");
-            if(!isAdmin){
-                const org = await scalekit.organization.createOrganization(user.email);
-                organizationId = org.organization?.id;
-            }
-            const currentPeriodEnd = new Date();
-            currentPeriodEnd.setFullYear(
-                currentPeriodEnd.getFullYear() + 1
-            );
-            await prisma.organization.create({
-                data: {
-                    id: organizationId,
-                    owner_id: new_user.id,
-                    isPersonal: true,
-                    owner_email: user.email,
-                    usage: {
-                        create: {}
-                    },
-
-                    subscription: {
-                        create: {
-                            current_period_start: new Date(),
-                            current_period_end: currentPeriodEnd
-                        }
-                    }
-                }
-            });
-
-        }
-        const userSession = {
-            email: user.email,
-            organization_id: organizationId,
-            role: "admin"
-        }
-
-        res.cookie("user_session", JSON.stringify(userSession), {
-            httpOnly: true,
-            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
-            secure: process.env.NODE_ENV === "production",
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-            path: "/",
+        const inviteToken = req.query.invite as string || "";
+        const params = querystring.stringify({
+            client_id: process.env.CLIENT_ID,
+            redirect_uri: process.env.CLIENT_REDIRECT_URI,
+            response_type: "code",
+            scope: "openid email profile",
+            access_type: "offline",
+            prompt: "consent",
+            // invitation token preserve karne ke liye
+            state: inviteToken,
         });
 
-        res.redirect(process.env.CLIENT_URL!);
+        const googleAuthUrl =
+            `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+        res.redirect(googleAuthUrl);
     } catch (error) {
-        console.log(error);
-
         res.status(500).json({ message: "Authentication failed", error })
     }
 }
+
+export const googleCallback = async (req: Request, res: Response) => {
+    try {
+        const code = req.query.code;
+        const inviteToken =
+            typeof req.query.state === "string"
+                ? req.query.state
+                : "";
+
+        if (!code) {
+            return res.status(400).json({
+                success: false,
+                message: "Authorization code missing",
+            });
+        }
+
+        // Exchange code for access token
+        const { data } = await axios.post(
+            "https://oauth2.googleapis.com/token",
+            {
+                code,
+                client_id: process.env.CLIENT_ID,
+                client_secret: process.env.CLIENT_SECRET,
+                redirect_uri: process.env.CLIENT_REDIRECT_URI,
+                grant_type: "authorization_code",
+            }
+        );
+
+        const accessToken = data.access_token;
+
+        // Get user profile
+        const googleUser = await axios.get(
+            "https://www.googleapis.com/oauth2/v2/userinfo",
+            {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                },
+            }
+        );
+
+        const {
+            email,
+            name,
+            picture,
+        } = googleUser.data;
+        console.log(email,name,picture);
+        
+        // Create/Get User
+        let user = await prisma.user.findUnique({
+            where: {
+                email,
+            },
+        });
+        let org;
+        if (!user) {
+            user = await prisma.user.create({
+                data: {
+                    email,
+                    name,
+                    image: picture,
+                },
+            });
+            org =  await prisma.organization.create({
+                data:{
+                    owner_email: email,
+                    owner_id:user.id
+                }
+            })
+            await prisma.subscription.create({
+                data:{
+                    organization_id:org.id,
+                }
+            })
+            await prisma.organizationUsage.create({
+                data:{
+                    organization_id:org.id,
+                }
+            })
+        }
+        else{
+            org = await prisma.organization.findFirst({
+                where:{
+                    owner_email:email,
+                }
+            })
+        }
+        // Generate JWT
+        const token = jwt.sign(
+            {
+                role:"admin",
+                organizationId: org?.id,
+                email: user.email,
+            },
+            process.env.JWT_SECRET!,
+            {
+                expiresIn: "7d",
+            }
+        );
+
+        // Set Cookie
+        res.cookie("user_session", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+
+        // Invitation Handling
+        if (inviteToken) {
+            //   const invite =
+            //     await prisma.invitation.findUnique({
+            //       where: {
+            //         token: inviteToken,
+            //       },
+            //     });
+
+            //   if (
+            //     invite &&
+            //     invite.email.toLowerCase() ===
+            //       user.email.toLowerCase()
+            //   ) {
+            //     const existingMember =
+            //       await prisma.teamMember.findUnique({
+            //         where: {
+            //           user_email_organization_id: {
+            //             user_email: user.email,
+            //             organization_id:
+            //               invite.organization_id,
+            //           },
+            //         },
+            //       });
+
+            //     if (!existingMember) {
+            //       await prisma.teamMember.create({
+            //         data: {
+            //           user_email: user.email,
+            //           name: user.name || "",
+            //           organization_id:
+            //             invite.organization_id,
+            //           role: invite.role,
+            //           status: "active",
+            //         },
+            //       });
+            //     }
+
+            //     // Optional:
+            //     // Mark invitation accepted
+            //   }
+        }
+
+        return res.redirect(
+            `${process.env.CLIENT_URL}/dashboard`
+        );
+    } catch (error) {
+        console.error(error);
+        return res.redirect(
+            `${process.env.CLIENT_URL}/login?error=google_auth_failed`
+        );
+    }
+};
 
 export const getUserInfo = async (req: Request, res: Response) => {
     try {
@@ -159,8 +228,8 @@ export const addMetadata = async (req: Request, res: Response) => {
 
         })
         res.cookie("user_metadata", JSON.stringify(metaData), {
-  httpOnly: true,
-            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
+            httpOnly: true,
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
             secure: process.env.NODE_ENV === "production",
             maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
             path: "/",
@@ -195,7 +264,7 @@ export const getMetadata = async (req: Request, res: Response) => {
         const data = { ...metadata, role }
         res.cookie("user_metadata", JSON.stringify(data), {
             httpOnly: true,
-            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
             secure: process.env.NODE_ENV === "production",
             maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
             path: "/",

@@ -17,9 +17,6 @@ import dotenv from 'dotenv';
 import { jwtVerify } from 'jose';
 import { prisma } from './lib/prisma.js';
 import { sendEmail } from './utils/help.js';
-
-
-
 dotenv.config();
 
 const app = express();

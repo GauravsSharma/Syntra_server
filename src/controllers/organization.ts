@@ -63,14 +63,7 @@ export const addMemberToOrganization = async (req: Request, res: Response) => {
                 message: "User is already invited."
             })
         }
-        const { user } = await scalekit.user.createUserAndMembership(organizationId, {
-            email: member_email,
-            userProfile: {
-                firstName: name || member_email.split("@")[0],
-                lastName: ""
-            },
-            sendInvitationEmail: true
-        })
+        
         const member = await prisma.teamMember.create({
             data: {
                 user_email: member_email,
