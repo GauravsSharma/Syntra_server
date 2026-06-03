@@ -70,8 +70,8 @@ export const googleCallback = async (req: Request, res: Response) => {
             name,
             picture,
         } = googleUser.data;
-        console.log(email,name,picture);
-        
+        console.log(email, name, picture);
+
         // Create/Get User
         let user = await prisma.user.findUnique({
             where: {
@@ -87,34 +87,34 @@ export const googleCallback = async (req: Request, res: Response) => {
                     image: picture,
                 },
             });
-            org =  await prisma.organization.create({
-                data:{
+            org = await prisma.organization.create({
+                data: {
                     owner_email: email,
-                    owner_id:user.id
+                    owner_id: user.id
                 }
             })
             await prisma.subscription.create({
-                data:{
-                    organization_id:org.id,
+                data: {
+                    organization_id: org.id,
                 }
             })
             await prisma.organizationUsage.create({
-                data:{
-                    organization_id:org.id,
+                data: {
+                    organization_id: org.id,
                 }
             })
         }
-        else{
+        else {
             org = await prisma.organization.findFirst({
-                where:{
-                    owner_email:email,
+                where: {
+                    owner_email: email,
                 }
             })
         }
         // Generate JWT
         const token = jwt.sign(
             {
-                role:"admin",
+                role: "admin",
                 organizationId: org?.id,
                 email: user.email,
             },
@@ -134,47 +134,71 @@ export const googleCallback = async (req: Request, res: Response) => {
 
         // Invitation Handling
         if (inviteToken) {
-            //   const invite =
-            //     await prisma.invitation.findUnique({
-            //       where: {
-            //         token: inviteToken,
-            //       },
-            //     });
+            console.log(inviteToken);
+            
+            const invitation =
+                await prisma.invitation.findUnique({
+                    where: {
+                        token:inviteToken,
+                    },
+                });
 
-            //   if (
-            //     invite &&
-            //     invite.email.toLowerCase() ===
-            //       user.email.toLowerCase()
-            //   ) {
-            //     const existingMember =
-            //       await prisma.teamMember.findUnique({
-            //         where: {
-            //           user_email_organization_id: {
-            //             user_email: user.email,
-            //             organization_id:
-            //               invite.organization_id,
-            //           },
-            //         },
-            //       });
+            if (!invitation) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Invitation not found",
+                });
+            }
 
-            //     if (!existingMember) {
-            //       await prisma.teamMember.create({
-            //         data: {
-            //           user_email: user.email,
-            //           name: user.name || "",
-            //           organization_id:
-            //             invite.organization_id,
-            //           role: invite.role,
-            //           status: "active",
-            //         },
-            //       });
-            //     }
+            if (
+                invitation.email.toLowerCase() !==
+                email.toLowerCase()
+            ) {
+                return res.status(403).json({
+                    success: false,
+                    message:
+                        "This invitation belongs to another email",
+                });
+            }
 
-            //     // Optional:
-            //     // Mark invitation accepted
-            //   }
+            const member =
+                await prisma.teamMember.findFirst({
+                    where: {
+                        user_email: invitation.email,
+                        organization_id:
+                            invitation.organizationId,
+                        status: "pending",
+                    },
+                });
+
+            if (!member) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "No pending invitation found",
+                });
+            }
+
+            await prisma.$transaction([
+                prisma.teamMember.update({
+                    where: {
+                        id: member.id,
+                    },
+                    data: {
+                        status: "active",
+                    },
+                }),
+
+                prisma.invitation.update({
+                    where: {
+                        id: invitation.id,
+                    },
+                    data: {
+                        acceptedAt: new Date(),
+                    },
+                }),
+            ]);
         }
-
         return res.redirect(
             `${process.env.CLIENT_URL}/dashboard`
         );

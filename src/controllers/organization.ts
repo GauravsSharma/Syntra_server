@@ -1,13 +1,16 @@
-import { Request, Response,CookieOptions } from "express";
+import { Request, Response, CookieOptions } from "express";
 import { prisma } from "../lib/prisma";
 import scalekit from "../config/scalkit";
+import crypto from "crypto";
+import { sendOrganizationInvite } from "../utils/email";
+import jwt from "jsonwebtoken";
 
-const COOKIE_OPTIONS:CookieOptions = {
+const COOKIE_OPTIONS: CookieOptions = {
     httpOnly: true,
-            sameSite:process.env.NODE_ENV === "production"? "none":"lax",
-            secure: process.env.NODE_ENV === "production",
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-            path: "/",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: "/",
 };
 
 export const getOrganization = async (req: Request, res: Response) => {
@@ -55,15 +58,30 @@ export const addMemberToOrganization = async (req: Request, res: Response) => {
         const pendingUser = await prisma.teamMember.findFirst({
             where: { user_email: member_email }
         })
-        console.log(pendingUser);
-
         if (pendingUser) {
             return res.status(400).json({
                 success: false,
                 message: "User is already invited."
             })
         }
-        
+        const org = await prisma.organization.findUnique({
+            where: { id: organizationId },
+            select: { business_name: true, owner_email: true }
+        })
+        // todo: invitation table m entry karo, fir email bhejo
+        const token = crypto.randomBytes(32).toString("hex");
+        await prisma.invitation.create({
+            data: {
+                email: member_email,
+                organizationId: organizationId,
+                token,
+                role: "member",
+                invitedBy: (req as any).user.email,
+                expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days from now
+            }
+        })
+        sendOrganizationInvite(member_email, token, org?.business_name || org?.owner_email?.split("@")[0] || "");
+
         const member = await prisma.teamMember.create({
             data: {
                 user_email: member_email,
@@ -85,10 +103,152 @@ export const addMemberToOrganization = async (req: Request, res: Response) => {
         })
     }
 }
+
+export const verifyInvitation = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const token = req.params.token as string;
+        const invitation =
+            await prisma.invitation.findUnique({
+                where: {
+                    token,
+                },
+            });
+
+        if (!invitation) {
+            return res.status(404).json({
+                success: false,
+                message: "Invitation not found",
+            });
+        }
+
+        if (invitation.acceptedAt) {
+            return res.status(400).json({
+                success: false,
+                message: "Invitation already accepted",
+            });
+        }
+
+        if (
+            invitation.expiresAt <
+            new Date()
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invitation expired",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            invitation: {
+                email: invitation.email,
+                role: invitation.role,
+                organizationId:
+                    invitation.organizationId,
+            },
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success: false,
+            message:
+                "Failed to verify invitation",
+        });
+    }
+};
+
+export const acceptInvitation = async (
+    req: Request,
+    res: Response
+) => {
+    try {
+        const { token } = req.body;
+
+        const invitation =
+            await prisma.invitation.findUnique({
+                where: {
+                    token,
+                },
+            });
+
+        if (!invitation) {
+            return res.status(404).json({
+                success: false,
+                message: "Invitation not found",
+            });
+        }
+
+        if (
+            invitation.email.toLowerCase() !==
+            (req as any).user!.email.toLowerCase()
+        ) {
+            return res.status(403).json({
+                success: false,
+                message:
+                    "This invitation belongs to another email",
+            });
+        }
+
+        const member =
+            await prisma.teamMember.findFirst({
+                where: {
+                    user_email: invitation.email,
+                    organization_id:
+                        invitation.organizationId,
+                    status: "pending",
+                },
+            });
+
+        if (!member) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "No pending invitation found",
+            });
+        }
+
+        await prisma.$transaction([
+            prisma.teamMember.update({
+                where: {
+                    id: member.id,
+                },
+                data: {
+                    status: "active",
+                },
+            }),
+
+            prisma.invitation.update({
+                where: {
+                    id: invitation.id,
+                },
+                data: {
+                    acceptedAt: new Date(),
+                },
+            }),
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            message:
+                "Invitation accepted successfully",
+        });
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+            success: false,
+            message:
+                "Failed to accept invitation",
+        });
+    }
+};
+
 export const getTeamMembers = async (req: Request, res: Response) => {
     try {
         const og_id = (req as any).user.organizationId;
-console.log("orrrrrrrrggggggg------->",og_id);
         const team_members = await prisma.teamMember.findMany({
             where: { organization_id: og_id }
         })
@@ -179,10 +339,17 @@ export const switchOrganizations = async (req: Request, res: Response) => {
 
         const userSession = {
             email: user_email,
-            organization_id: ownedOrg ? ownedOrg.id : membership!.organization_id,
+            organizationId: ownedOrg ? ownedOrg.id : membership!.organization_id,
             role: ownedOrg ? "admin" : membership!.role,
         };
 
+        const token = jwt.sign(
+            userSession,
+            process.env.JWT_SECRET!,
+            {
+                expiresIn: "7d",
+            }
+        );
 
         const organization = ownedOrg
             ? ownedOrg
@@ -191,7 +358,8 @@ export const switchOrganizations = async (req: Request, res: Response) => {
             });
 
         const metadata = { ...organization, role: role === "member" ? "admin" : "member" }
-        res.cookie("user_session", JSON.stringify(userSession), COOKIE_OPTIONS);
+
+        res.cookie("user_session",token, COOKIE_OPTIONS);
         res.cookie("user_metadata", JSON.stringify(metadata), COOKIE_OPTIONS);
 
         return res.status(200).json({ success: true, organization: metadata });
@@ -206,65 +374,65 @@ export const switchOrganizations = async (req: Request, res: Response) => {
 
 
 export const deleteOrg = async (req: Request, res: Response) => {
-  try {
-    const organizationId = (req as any).user.organizationId;
-    const user_email = (req as any).user.email;
-    const role = (req as any).user.role;
+    try {
+        const organizationId = (req as any).user.organizationId;
+        const user_email = (req as any).user.email;
+        const role = (req as any).user.role;
 
-    if (!organizationId) {
-      return res.status(400).json({
-        success: false,
-        message: "Organization id missing.",
-      });
+        if (!organizationId) {
+            return res.status(400).json({
+                success: false,
+                message: "Organization id missing.",
+            });
+        }
+
+        if (role !== "admin") {
+            return res.status(403).json({
+                success: false,
+                message: "You don't have access to perform this action.",
+            });
+        }
+
+        const org = await prisma.organization.findUnique({
+            where: { id: organizationId },
+            select: {
+                owner_email: true,
+            },
+        });
+
+        if (!org) {
+            return res.status(404).json({
+                success: false,
+                message: "Organization not found.",
+            });
+        }
+
+        if (user_email !== org.owner_email) {
+            return res.status(403).json({
+                success: false,
+                message: "You don't have access to perform this action.",
+            });
+        }
+
+        await scalekit.organization.deleteOrganization(organizationId)
+        await prisma.organization.delete({
+            where: { id: organizationId },
+        });
+        // clear cookies
+        res.clearCookie("user_metadata");
+        res.clearCookie("user_session");
+
+        return res.status(200).json({
+            success: true,
+            message: "Organization deleted successfully.",
+        });
+
+    } catch (error) {
+        console.error("Delete org error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error.",
+        });
     }
-
-    if (role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "You don't have access to perform this action.",
-      });
-    }
-
-    const org = await prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: {
-        owner_email: true,
-      },
-    });
-
-    if (!org) {
-      return res.status(404).json({
-        success: false,
-        message: "Organization not found.",
-      });
-    }
-
-    if (user_email !== org.owner_email) {
-      return res.status(403).json({
-        success: false,
-        message: "You don't have access to perform this action.",
-      });
-    }
-
-    await scalekit.organization.deleteOrganization(organizationId)
-    await prisma.organization.delete({
-      where: { id: organizationId },
-    });
-    // clear cookies
-    res.clearCookie("user_metadata");
-    res.clearCookie("user_session");
-
-    return res.status(200).json({
-      success: true,
-      message: "Organization deleted successfully.",
-    });
-
-  } catch (error) {
-    console.error("Delete org error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error.",
-    });
-  }
 };

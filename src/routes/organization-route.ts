@@ -1,4 +1,4 @@
-import { addMemberToOrganization, deleteOrg, getMyOrganizations, getOrganization, getTeamMembers, switchOrganizations } from "../controllers/organization";
+import { acceptInvitation, addMemberToOrganization, deleteOrg, getMyOrganizations, getOrganization, getTeamMembers, switchOrganizations, verifyInvitation } from "../controllers/organization";
 import express from 'express';
 
 import { authMiddleware } from '../middleware/auth.js';
@@ -11,6 +11,8 @@ router.delete("/", authMiddleware,deleteOrg)
 router.get("/overview", authMiddleware, getOverview)
 router.get("/my", authMiddleware, getMyOrganizations)
 router.post("/switch", authMiddleware, switchOrganizations)
+router.post("/invitations/:token/accept", authMiddleware, acceptInvitation)
+router.get("/invitations/:token/verify", verifyInvitation)
 
 router.get("/members", authMiddleware, getTeamMembers)
 router.post("/members", authMiddleware, addMemberToOrganization)

@@ -38,6 +38,11 @@ export type Subscription = Prisma.SubscriptionModel
  */
 export type OrganizationUsage = Prisma.OrganizationUsageModel
 /**
+ * Model Invitation
+ * 
+ */
+export type Invitation = Prisma.InvitationModel
+/**
  * Model Metadata
  * 
  */

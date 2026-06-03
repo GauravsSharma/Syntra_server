@@ -55,6 +55,7 @@ export const ModelName = {
   Organization: 'Organization',
   Subscription: 'Subscription',
   OrganizationUsage: 'OrganizationUsage',
+  Invitation: 'Invitation',
   Metadata: 'Metadata',
   KnowledgeSource: 'KnowledgeSource',
   Section: 'Section',
@@ -134,6 +135,21 @@ export const OrganizationUsageScalarFieldEnum = {
 } as const
 
 export type OrganizationUsageScalarFieldEnum = (typeof OrganizationUsageScalarFieldEnum)[keyof typeof OrganizationUsageScalarFieldEnum]
+
+
+export const InvitationScalarFieldEnum = {
+  id: 'id',
+  token: 'token',
+  email: 'email',
+  role: 'role',
+  organizationId: 'organizationId',
+  invitedBy: 'invitedBy',
+  expiresAt: 'expiresAt',
+  acceptedAt: 'acceptedAt',
+  createdAt: 'createdAt'
+} as const
+
+export type InvitationScalarFieldEnum = (typeof InvitationScalarFieldEnum)[keyof typeof InvitationScalarFieldEnum]
 
 
 export const MetadataScalarFieldEnum = {

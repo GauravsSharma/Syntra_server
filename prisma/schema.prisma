@@ -94,6 +94,23 @@ model OrganizationUsage {
   updatedAt                  DateTime @updatedAt
 }
 
+model Invitation {
+  id             String   @id @default(uuid())
+  token          String   @unique
+
+  email          String
+  role           String
+
+  organizationId String
+
+  invitedBy      String
+
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+
+  createdAt      DateTime @default(now())
+}
+
 model Metadata {
   id             String   @id @default(uuid())
   user_email     String   @unique
